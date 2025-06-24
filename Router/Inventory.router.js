@@ -1,13 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { addProduct,getProducts } = require('../Controller/Inventory.controller');
+const { addProduct, getProducts, addProductType, getProductTypes, updateProduct, deleteProduct, toggleProductStatus } = require('../Controller/Inventory.controller');
 const multer = require('multer');
 
 const upload = multer({
-  dest: './uploads/',
+  dest: './Uploads/',
 });
 
-router.post('/', upload.single('image'), addProduct);
-router.get('/', getProducts);
+router.post('/products', upload.single('image'), addProduct);
+router.get('/products', getProducts);
+router.post('/product-types', addProductType);
+router.get('/product-types', getProductTypes);
+router.put('/products/:tableName/:id', upload.single('image'), updateProduct);
+router.delete('/products/:tableName/:id', deleteProduct);
+router.patch('/products/:tableName/:id/toggle-status', toggleProductStatus);
 
 module.exports = router;

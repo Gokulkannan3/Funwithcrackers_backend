@@ -40,19 +40,11 @@ const upload = multer({
     cb(new Error('Only JPEG/PNG images are allowed'));
   },
 });
+app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
 
-// Serve uploaded images statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Routes
-const addProducts = require('./Router/Inventory.router');
-app.use('/api/products', addProducts);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: err.message || 'Server error' });
-});
+// Mount API routes
+app.use('/api', require('./Router/Inventory.router'));
+app.use('/api', require('./Router/Admin.router'));
 
 // Start server
 const PORT = process.env.PORT || 5000;
