@@ -8,6 +8,21 @@ const pool = new Pool({
   database: process.env.PGDATABASE,
 });
 
+// Create new table for transport details
+const createTransportTable = `
+  CREATE TABLE IF NOT EXISTS transport_details (
+    id SERIAL PRIMARY KEY,
+    order_id VARCHAR(50) REFERENCES bookings(order_id),
+    transport_name VARCHAR(100) NOT NULL,
+    lr_number VARCHAR(50) NOT NULL,
+    transport_contact VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+// Execute table creation
+pool.query(createTransportTable).catch(err => console.error('Error creating transport table:', err));
+
 exports.getAllBookings = async (req, res) => {
   try {
     const { status } = req.query;
@@ -31,23 +46,45 @@ exports.getAllBookings = async (req, res) => {
 exports.updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, transportDetails } = req.body;
     const validStatuses = ['booked', 'paid', 'packed', 'dispatched', 'delivered'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
+    
+    await pool.query('BEGIN');
+    
     const query = `
       UPDATE public.bookings
       SET status = $1
       WHERE id = $2
-      RETURNING id, status
+      RETURNING id, order_id, status
     `;
     const result = await pool.query(query, [status, id]);
+
     if (result.rows.length === 0) {
+      await pool.query('ROLLBACK');
       return res.status(404).json({ message: 'Booking not found' });
     }
+
+    if (status === 'dispatched' && transportDetails) {
+      const transportQuery = `
+        INSERT INTO transport_details (order_id, transport_name, lr_number, transport_contact)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+      `;
+      await pool.query(transportQuery, [
+        result.rows[0].order_id,
+        transportDetails.transportName,
+        transportDetails.lrNumber,
+        transportDetails.transportContact || null
+      ]);
+    }
+
+    await pool.query('COMMIT');
     res.status(200).json({ message: 'Status updated successfully', data: result.rows[0] });
   } catch (err) {
+    await pool.query('ROLLBACK');
     console.error('Error updating booking status:', err);
     res.status(500).json({ message: 'Failed to update booking status' });
   }
@@ -58,13 +95,15 @@ exports.getFilteredBookings = async (req, res) => {
     const { status } = req.query;
     const allowedStatuses = ['paid', 'packed', 'dispatched', 'delivered'];
     let query = `
-      SELECT id, order_id, customer_name, district, state, status, products, address
-      FROM public.bookings
-      WHERE status = ANY($1)
+      SELECT b.id, b.order_id, b.customer_name, b.district, b.state, b.status, b.products, b.address,
+             t.transport_name, t.lr_number, t.transport_contact
+      FROM public.bookings b
+      LEFT JOIN transport_details t ON b.order_id = t.order_id
+      WHERE b.status = ANY($1)
     `;
     const params = [allowedStatuses];
     if (status && allowedStatuses.includes(status)) {
-      query += ` AND status = $2`;
+      query += ` AND b.status = $2`;
       params.push(status);
     }
     const result = await pool.query(query, params);
@@ -82,23 +121,49 @@ exports.getFilteredBookings = async (req, res) => {
 exports.updateFilterBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, transportDetails } = req.body;
     const validStatuses = ['booked', 'paid', 'packed', 'dispatched', 'delivered'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
-    const query = `
+    
+    await pool.query('BEGIN');
+    
+    let query = `
       UPDATE public.bookings
       SET status = $1
-      WHERE id = $2
-      RETURNING id, status
     `;
-    const result = await pool.query(query, [status, id]);
+    const params = [status, id];
+
+    if (status === 'dispatched' && transportDetails) {
+      query += `,
+        transport_name = $3,
+        lr_number = $4,
+        transport_contact = $5
+      `;
+      params.push(
+        transportDetails.transportName,
+        transportDetails.lrNumber,
+        transportDetails.transportContact || null
+      );
+    }
+
+    query += `
+      WHERE id = $2
+      RETURNING id, order_id, status, transport_name, lr_number, transport_contact
+    `;
+    
+    const result = await pool.query(query, params);
+
     if (result.rows.length === 0) {
+      await pool.query('ROLLBACK');
       return res.status(404).json({ message: 'Booking not found' });
     }
+
+    await pool.query('COMMIT');
     res.status(200).json({ message: 'Status updated successfully', data: result.rows[0] });
   } catch (err) {
+    await pool.query('ROLLBACK');
     console.error('Error updating booking status:', err);
     res.status(500).json({ message: 'Failed to update booking status' });
   }
