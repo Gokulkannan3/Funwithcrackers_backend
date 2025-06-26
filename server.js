@@ -45,6 +45,10 @@ app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
 // Mount API routes
 app.use('/api', require('./Router/Inventory.router'));
 app.use('/api', require('./Router/Admin.router'));
+app.use('/api/locations', require('./Router/Location.router'));
+app.use('/api/directcust', require('./Router/Directcust.router'));
+app.use('/api/direct', require('./Router/Direct.router'));
+app.use('/api/tracking', require('./Router/Tracking.router'));
 
 // Start server
 const PORT = process.env.PORT || 5000;
