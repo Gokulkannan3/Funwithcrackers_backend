@@ -95,8 +95,7 @@ exports.getFilteredBookings = async (req, res) => {
     const { status } = req.query;
     const allowedStatuses = ['paid', 'packed', 'dispatched', 'delivered'];
     let query = `
-      SELECT b.id, b.order_id, b.customer_name, b.district, b.state, b.status, b.products, b.address,
-             t.transport_name, t.lr_number, t.transport_contact
+      SELECT b.id, b.order_id, b.customer_name, b.district, b.state, b.status, b.products, b.address,b.created_at, t.transport_name, t.lr_number, t.transport_contact
       FROM public.bookings b
       LEFT JOIN transport_details t ON b.order_id = t.order_id
       WHERE b.status = ANY($1)

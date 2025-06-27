@@ -94,33 +94,15 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS public.bookings (
-        id SERIAL PRIMARY KEY,
-        customer_id INTEGER NOT NULL REFERENCES public.customers(id),
-        order_id VARCHAR(50) NOT NULL UNIQUE,
-        products JSONB NOT NULL,
-        total NUMERIC(10,2) NOT NULL,
-        address TEXT,
-        mobile_number TEXT,
-        customer_name TEXT,
-        email TEXT,
-        district TEXT,
-        state TEXT,
-        status TEXT DEFAULT 'booked',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     const query = `
-      INSERT INTO public.bookings (customer_id, order_id, products, total, address, mobile_number, customer_name, email, district, state, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING id
+      INSERT INTO public.bookings (customer_id, order_id, products, total, address, mobile_number, customer_name, email, district, state, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+      RETURNING id, created_at
     `;
     const values = [customer_id, order_id, JSON.stringify(products), parseFloat(total), address || null, mobile_number || null, customer_name || null, email || null, district || null, state || null, 'booked'];
     const result = await pool.query(query, values);
 
-    res.status(201).json({ message: 'Booking created successfully', id: result.rows[0].id });
+    res.status(201).json({ message: 'Booking created successfully', id: result.rows[0].id, created_at: result.rows[0].created_at });
   } catch (err) {
     console.error('Error creating booking:', err);
     res.status(500).json({ message: 'Failed to create booking' });
