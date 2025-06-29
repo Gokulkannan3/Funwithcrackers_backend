@@ -43,7 +43,8 @@ exports.addProduct = async (req, res) => {
           per VARCHAR(10) NOT NULL CHECK (per IN ('pieces', 'box', 'pkt')),
           discount NUMERIC(5,2) NOT NULL,
           image VARCHAR(255),
-          status VARCHAR(10) NOT NULL DEFAULT 'off' CHECK (status IN ('on', 'off'))
+          status VARCHAR(10) NOT NULL DEFAULT 'off' CHECK (status IN ('on', 'off')),
+          fast_running BOOLEAN DEFAULT false
         )
       `);
     }
@@ -55,9 +56,7 @@ exports.addProduct = async (req, res) => {
     );
 
     if (duplicateCheck.rows.length > 0) {
-      return res.status(400).json({ 
-        message: 'Product already exists' 
-      });
+      return res.status(400).json({ message: 'Product already exists' });
     }
 
     const query = `
@@ -75,6 +74,34 @@ exports.addProduct = async (req, res) => {
   }
 };
 
+exports.toggleFastRunning = async (req, res) => {
+  try {
+    const { tableName, id } = req.params;
+
+    const result = await pool.query(
+      `SELECT fast_running FROM public.${tableName} WHERE id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    const current = result.rows[0].fast_running;
+    const updated = !current;
+
+    await pool.query(
+      `UPDATE public.${tableName} SET fast_running = $1 WHERE id = $2`,
+      [updated, id]
+    );
+
+    res.status(200).json({ message: 'Fast running status updated', fast_running: updated });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to update fast running status' });
+  }
+};
+
 exports.getProducts = async (req, res) => {
   try {
     const typeResult = await pool.query('SELECT product_type FROM public.products');
@@ -85,7 +112,7 @@ exports.getProducts = async (req, res) => {
     for (const productType of productTypes) {
       const tableName = productType.toLowerCase().replace(/\s+/g, '_');
       const query = `
-        SELECT id, serial_number, productname, price, per, discount, image, status
+        SELECT id, serial_number, productname, price, per, discount, image, status, fast_running
         FROM public.${tableName}
       `;
       const result = await pool.query(query);
@@ -98,7 +125,8 @@ exports.getProducts = async (req, res) => {
         per: row.per,
         discount: row.discount,
         image: row.image,
-        status: row.status
+        status: row.status,
+        fast_running: row.fast_running
       }));
       allProducts = [...allProducts, ...products];
     }
@@ -144,7 +172,8 @@ exports.addProductType = async (req, res) => {
         per VARCHAR(10) NOT NULL CHECK (per IN ('pieces', 'box', 'pkt')),
         discount NUMERIC(5,2) NOT NULL,
         image VARCHAR(255),
-        status VARCHAR(10) NOT NULL DEFAULT 'off' CHECK (status IN ('on', 'off'))
+        status VARCHAR(10) NOT NULL DEFAULT 'off' CHECK (status IN ('on', 'off')),
+        fast_running BOOLEAN DEFAULT false
       )
     `);
 
@@ -223,7 +252,6 @@ exports.toggleProductStatus = async (req, res) => {
   try {
     const { tableName, id } = req.params;
 
-    // Fetch current status
     const currentStatusQuery = `SELECT status FROM public.${tableName} WHERE id = $1`;
     const currentStatusResult = await pool.query(currentStatusQuery, [id]);
 
@@ -234,7 +262,6 @@ exports.toggleProductStatus = async (req, res) => {
     const currentStatus = currentStatusResult.rows[0].status;
     const newStatus = currentStatus === 'on' ? 'off' : 'on';
 
-    // Update status
     const updateQuery = `UPDATE public.${tableName} SET status = $1 WHERE id = $2 RETURNING id, status`;
     const updateResult = await pool.query(updateQuery, [newStatus, id]);
 
