@@ -13,7 +13,7 @@ exports.getFilteredBookings = async (req, res) => {
     const { status } = req.query;
     const allowedStatuses = ['paid', 'packed', 'dispatched', 'delivered'];
     let query = `
-      SELECT id, order_id, customer_name, district, state, status
+      SELECT id, order_id, customer_name, district, state, status, mobile_number
       FROM public.bookings
       WHERE status = ANY($1)
     `;
