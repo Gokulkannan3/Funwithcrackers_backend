@@ -23,16 +23,13 @@ exports.addState = async (req, res) => {
   if (!name) return res.status(400).json({ error: 'State name is required' });
 
   try {
-    // Check if state already exists
     const checkResult = await pool.query('SELECT name FROM states WHERE name = $1', [name]);
     if (checkResult.rows.length > 0) {
       return res.status(400).json({ error: 'State already exists' });
     }
 
-    // Add state to states table
     await pool.query('INSERT INTO states (name) VALUES ($1)', [name]);
 
-    // Create districts table for the state
     const tableName = `districts_${name.toLowerCase().replace(/\s+/g, '_')}`;
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ${tableName} (
@@ -52,11 +49,9 @@ exports.deleteState = async (req, res) => {
   const { stateName } = req.params;
 
   try {
-    // Drop the state's districts table
     const tableName = `districts_${stateName.toLowerCase().replace(/\s+/g, '_')}`;
     await pool.query(`DROP TABLE IF EXISTS ${tableName}`);
 
-    // Delete state from states table
     await pool.query('DELETE FROM states WHERE name = $1', [stateName]);
 
     res.json({ message: 'State deleted successfully' });
@@ -71,7 +66,6 @@ exports.getDistricts = async (req, res) => {
   const tableName = `districts_${stateName.toLowerCase().replace(/\s+/g, '_')}`;
 
   try {
-    // Check if table exists
     const tableExists = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)`,
       [tableName]

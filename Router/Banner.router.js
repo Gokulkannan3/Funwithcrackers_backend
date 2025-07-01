@@ -81,7 +81,35 @@ router.get('/banners', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch banners' });
   }
 });
+router.delete('/banners/:id', async (req, res) => {
+  const { id } = req.params;
 
+  try {
+    // Get the image path before deletion
+    const { rows } = await pool.query('SELECT image_url FROM banners WHERE id = $1', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Banner not found' });
+    }
+
+    const imagePath = path.join(__dirname, '..', rows[0].image_url);
+
+    // Delete the banner record
+    await pool.query('DELETE FROM banners WHERE id = $1', [id]);
+
+    // Delete the file from disk
+    fs.unlink(imagePath, (err) => {
+      if (err) {
+        console.warn('File deletion failed:', err.message);
+        // Not critical, so continue
+      }
+    });
+
+    res.json({ message: 'Banner deleted successfully' });
+  } catch (err) {
+    console.error('Delete banner failed:', err.message);
+    res.status(500).json({ error: 'Failed to delete banner' });
+  }
+});
 // ✅ PATCH /api/banners/:id - Toggle banner active state
 router.patch('/banners/:id', async (req, res) => {
   const { id } = req.params;
