@@ -25,16 +25,28 @@ pool.query(createTransportTable).catch(err => console.error('Error creating tran
 
 exports.getAllBookings = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, customerType } = req.query;
     let query = `
-      SELECT id, order_id, customer_name, district, state, status
+      SELECT id, order_id, customer_name, district, state, status, customer_type ,total
       FROM public.bookings
     `;
+    const conditions = [];
     const params = [];
+
     if (status) {
-      query += ` WHERE status = $1`;
+      conditions.push(`status = $${params.length + 1}`);
       params.push(status);
     }
+
+    if (customerType) {
+      conditions.push(`customer_type = $${params.length + 1}`);
+      params.push(customerType);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
+    }
+
     const result = await pool.query(query, params);
     res.status(200).json(result.rows);
   } catch (err) {
@@ -42,6 +54,8 @@ exports.getAllBookings = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch bookings' });
   }
 };
+
+
 
 exports.updateBookingStatus = async (req, res) => {
   try {
