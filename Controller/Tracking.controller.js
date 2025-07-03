@@ -54,7 +54,7 @@ async function sendStatusUpdate(mobileNumber, status, transportDetails = null) {
     to: recipientNumber,
     type: 'template',
     template: {
-      name: 'status_update', // Ensure this template exists in your WhatsApp Business API
+      name: 'order_status_update', // Replace with your actual template name
       language: { code: 'en_US' },
       components: [
         {
@@ -80,7 +80,7 @@ async function sendStatusUpdate(mobileNumber, status, transportDetails = null) {
 
   try {
     const res = await axios.post(
-      `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
       payload,
       {
         headers: {
