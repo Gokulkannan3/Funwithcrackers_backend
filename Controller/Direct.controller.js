@@ -1,7 +1,9 @@
-const { Pool } = require('pg');
-const PDFDocument = require('pdfkit');
+const axios = require('axios');
+const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
+const { Pool } = require('pg');
+const PDFDocument = require('pdfkit');
 const multer = require('multer');
 
 // Database connection
@@ -13,7 +15,7 @@ const pool = new Pool({
   database: process.env.PGDATABASE,
 });
 
-// Multer configuration (optional, only needed if handling file uploads)
+// Multer configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const pdfDir = path.join(__dirname, '../pdf_data');
@@ -29,6 +31,11 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
+
+// WhatsApp configuration
+const ACCESS_TOKEN = 'EAAkAptynZC8UBO2qHv5fDJfo3NBocugPb2BqcUEFZAfBtVJ71zvbIDi6vddHRGfqJUMHQBEukpvQHV3eraI9ZBnzUN76vPXngPxvZA6ZCEiMesBoXgrNK6oVyHZAG6ogUy58E1CZAjszoEcPz0Tkqi44spuC1o0ibJhdZCIxaOON8oVk2MC915LZCzZBusYLbEEtZCWLk8Tn5kPwhL67lMmkpQW7hq64xicEqA6HZCWCqLKqLAZDZD';
+const PHONE_NUMBER_ID = '222295047641979';
+const RECIPIENT_NUMBER = '919941269128';
 
 // Generate PDF invoice
 const generateInvoicePDF = (bookingData, customerDetails, products) => {
@@ -105,6 +112,76 @@ const generateInvoicePDF = (bookingData, customerDetails, products) => {
   });
 };
 
+// Upload PDF to WhatsApp and return media ID
+async function uploadPDF(pdfPath) {
+  const form = new FormData();
+  form.append('file', fs.createReadStream(pdfPath));
+  form.append('type', 'application/pdf');
+  form.append('messaging_product', 'whatsapp');
+
+  const res = await axios.post(
+    `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/media`,
+    form,
+    {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        ...form.getHeaders(),
+      },
+    }
+  );
+
+  return res.data.id;
+}
+
+// Send template with document via WhatsApp
+async function sendTemplateWithPDF(mediaId, total, customerDetails) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: RECIPIENT_NUMBER,
+    type: 'template',
+    template: {
+      name: 'purchase_receipt_1',
+      language: { code: 'en_US' },
+      components: [
+        {
+          type: 'header',
+          parameters: [
+            {
+              type: 'document',
+              document: {
+                id: mediaId,
+                filename: 'receipt.pdf',
+              },
+            },
+          ],
+        },
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: `Rs.${parseFloat(total).toFixed(2)}` }, // {{1}}
+            { type: 'text', text: `Phoenix Crackers, Anil kumar Eye Hospital Opp, Sattur Road, Sivakasi` }, // {{2}}
+            { type: 'text', text: 'receipt' }, // {{3}}
+          ],
+        },
+      ],
+    },
+  };
+
+  const res = await axios.post(
+    `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+    payload,
+    {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  console.log('✅ Template with PDF sent!');
+  console.log(JSON.stringify(res.data, null, 2));
+}
+
 exports.getCustomers = async (req, res) => {
   try {
     const query = `
@@ -165,7 +242,8 @@ exports.getProductsByType = async (req, res) => {
 exports.createBooking = async (req, res) => {
   try {
     const { customer_id, order_id, products, total, customer_type, customer_name, address, mobile_number, email, district, state } = req.body;
-    console.log('Creating booking with order_id:', order_id); // Debug log
+    console.log('Creating booking with order_id:', order_id);
+
     if (!order_id) return res.status(400).json({ message: 'Order ID is required' });
     if (!/^[a-zA-Z0-9-_]+$/.test(order_id)) {
       console.log('Invalid order_id format:', order_id);
@@ -226,7 +304,7 @@ exports.createBooking = async (req, res) => {
       customerDetails,
       products
     );
-    console.log('Booking PDF path:', pdfPath); // Debug log
+    console.log('Booking PDF path:', pdfPath);
 
     // Insert booking with PDF path
     const query = `
@@ -250,10 +328,18 @@ exports.createBooking = async (req, res) => {
       pdfPath
     ];
     const result = await pool.query(query, values);
-    console.log('Booking inserted:', { id: result.rows[0].id, order_id: result.rows[0].order_id, pdf: result.rows[0].pdf }); // Debug log
+    console.log('Booking inserted:', { id: result.rows[0].id, order_id: result.rows[0].order_id, pdf: result.rows[0].pdf });
+
+    // Send PDF via WhatsApp
+    console.log('📤 Uploading PDF to WhatsApp...');
+    const mediaId = await uploadPDF(pdfPath);
+    console.log('📎 Uploaded Media ID:', mediaId);
+
+    console.log('📩 Sending template via WhatsApp...');
+    await sendTemplateWithPDF(mediaId, total, customerDetails);
 
     res.status(201).json({
-      message: 'Booking created successfully',
+      message: 'Booking created successfully and PDF sent via WhatsApp',
       id: result.rows[0].id,
       created_at: result.rows[0].created_at,
       customer_type: result.rows[0].customer_type,
@@ -261,20 +347,20 @@ exports.createBooking = async (req, res) => {
       order_id: result.rows[0].order_id
     });
   } catch (err) {
-    console.error('Error creating booking:', err);
-    res.status(500).json({ message: 'Failed to create booking', error: err.message });
+    console.error('Error creating booking or sending PDF:', err);
+    res.status(500).json({ message: 'Failed to create booking or send PDF', error: err.response ? JSON.stringify(err.response.data, null, 2) : err.message });
   }
 };
 
 exports.getInvoice = async (req, res) => {
   try {
     let { order_id } = req.params;
-    console.log('Received order_id: ', order_id); // Debug log
+    console.log('Received order_id: ', order_id);
 
     // Strip .pdf extension if present
     if (order_id.endsWith('.pdf')) {
       order_id = order_id.replace(/\.pdf$/, '');
-      console.log('Stripped order_id:', order_id); // Debug log
+      console.log('Stripped order_id:', order_id);
     }
 
     // Validate order_id format
@@ -295,7 +381,7 @@ exports.getInvoice = async (req, res) => {
       // Assume format is customer_name-order_id
       const parts = order_id.split('-');
       if (parts.length > 1) {
-        const possibleOrderId = parts.slice(1).join('-'); // Everything after first '-'
+        const possibleOrderId = parts.slice(1).join('-');
         console.log('Trying fallback with order_id:', possibleOrderId);
         bookingQuery = await pool.query(
           'SELECT products, total, customer_name, address, mobile_number, email, district, state, customer_type, pdf FROM public.bookings WHERE order_id = $1',
@@ -313,7 +399,7 @@ exports.getInvoice = async (req, res) => {
     }
 
     const { products, total, customer_name, address, mobile_number, email, district, state, customer_type, pdf } = bookingQuery.rows[0];
-    console.log('PDF Path from DB:', pdf); // Debug log
+    console.log('PDF Path from DB:', pdf);
 
     // Check if PDF file exists
     if (!fs.existsSync(pdf)) {
@@ -325,7 +411,7 @@ exports.getInvoice = async (req, res) => {
       );
       // Update the pdf column with the regenerated path
       await pool.query('UPDATE public.bookings SET pdf = $1 WHERE order_id = $2', [regeneratedPdfPath, bookingQuery.rows[0].order_id]);
-      console.log('Regenerated PDF Path:', regeneratedPdfPath); // Debug log
+      console.log('Regenerated PDF Path:', regeneratedPdfPath);
     }
 
     // Set headers and stream the PDF
@@ -341,3 +427,6 @@ exports.getInvoice = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch invoice', error: err.message });
   }
 };
+
+// Log exports to verify
+console.log('Controller exports:', module.exports);
