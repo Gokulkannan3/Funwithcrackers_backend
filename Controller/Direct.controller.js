@@ -12,7 +12,7 @@ const pool = new Pool({
   database: process.env.PGDATABASE,
 });
 
-// Multer configuration for PDF storage
+// Multer configuration for PDF storage (optional, can be removed if not used for uploads)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const pdfDir = path.join(__dirname, '../pdf_data');
@@ -74,9 +74,9 @@ exports.getProductsByType = async (req, res) => {
       product_type: row.product_type,
       serial_number: row.serial_number,
       productname: row.productname,
-      price: parseFloat(row.price), // Ensure price is a number
+      price: parseFloat(row.price),
       per: row.per,
-      discount: parseFloat(row.discount), // Ensure discount is a number
+      discount: parseFloat(row.discount),
       image: row.image,
       status: row.status
     }));
@@ -87,14 +87,14 @@ exports.getProductsByType = async (req, res) => {
   }
 };
 
-// Generate PDF invoice
+// Generate PDF invoice dynamically
 const generateInvoicePDF = (bookingData, customerDetails, products) => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
-    const pdfPath = path.join(__dirname, '../pdf_data', `${customerDetails.customer_name.toLowerCase().replace(/\s+/g, '_')}-${bookingData.order_id}.pdf`);
-    
-    const stream = fs.createWriteStream(pdfPath);
-    doc.pipe(stream);
+    const buffers = [];
+
+    doc.on('data', chunk => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
 
     // Header
     doc.fontSize(20).font('Helvetica-Bold').text('Phoenix Crackers', 50, 50);
@@ -123,7 +123,6 @@ const generateInvoicePDF = (bookingData, customerDetails, products) => {
       .text('Price', 350, tableY)
       .text('Total', 450, tableY);
     
-    
     // Table Content
     let y = tableY + 25;
     let total = 0;
@@ -147,9 +146,6 @@ const generateInvoicePDF = (bookingData, customerDetails, products) => {
     doc.font('Helvetica-Bold').text(`Total: Rs.${total.toFixed(2)}`, 450, y + 20);
 
     doc.end();
-    
-    stream.on('finish', () => resolve(pdfPath));
-    stream.on('error', reject);
   });
 };
 
@@ -220,8 +216,8 @@ exports.createBooking = async (req, res) => {
     ];
     const result = await pool.query(query, values);
 
-    // Generate PDF
-    const pdfPath = await generateInvoicePDF(
+    // Generate PDF dynamically
+    const pdfBuffer = await generateInvoicePDF(
       { order_id, customer_type: finalCustomerType, total },
       customerDetails,
       products
@@ -232,7 +228,7 @@ exports.createBooking = async (req, res) => {
       id: result.rows[0].id, 
       created_at: result.rows[0].created_at, 
       customer_type: result.rows[0].customer_type,
-      pdf_path: `/pdf_data/${customerDetails.customer_name.toLowerCase().replace(/\s+/g, '_')}-${order_id}.pdf`
+      pdf_path: `/api/direct/invoice/${customerDetails.customer_name.toLowerCase().replace(/\s+/g, '_')}-${order_id}.pdf`
     });
   } catch (err) {
     console.error('Error creating booking:', err);
@@ -243,15 +239,15 @@ exports.createBooking = async (req, res) => {
 exports.getInvoice = async (req, res) => {
   try {
     const { filename } = req.params;
-    const pdfPath = path.join(__dirname, '../pdf_data', filename);
-    
-    if (!fs.existsSync(pdfPath)) {
-      return res.status(404).json({ message: 'Invoice not found' });
-    }
+    const pdfBuffer = await generateInvoicePDF(
+      { order_id: filename.split('-')[1].replace('.pdf', ''), customer_type: 'User', total: 0 }, // Placeholder data; adjust as needed
+      { customer_name: filename.split('-')[0], address: 'N/A', mobile_number: 'N/A', district: 'N/A', state: 'N/A' }, // Placeholder data; fetch from DB if needed
+      [] // Placeholder products; fetch from DB using order_id if needed
+    );
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-    fs.createReadStream(pdfPath).pipe(res);
+    res.send(pdfBuffer);
   } catch (err) {
     console.error('Error fetching invoice:', err);
     res.status(500).json({ message: 'Failed to fetch invoice' });
