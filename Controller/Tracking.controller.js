@@ -1,7 +1,5 @@
 const { Pool } = require('pg');
-const axios = require('axios');
 
-// Database connection
 const pool = new Pool({
   user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
@@ -10,11 +8,7 @@ const pool = new Pool({
   database: process.env.PGDATABASE,
 });
 
-// WhatsApp configuration
-const ACCESS_TOKEN = 'EAAkAptynZC8UBO0o6AZCRtnVxH7Mg9JTvP2TF1c9h5663ZAi6qk6LbZCpZAueyaiqPbFYPHjzEx3PFsciBQZB9TkYEfaPvbKxCmnRkepKiIMkj0LzYueQVoYkTYnIc38xV31yIXqfB1xk4Cuaa6yHZCr4ZCeu2pQNiBxlz6siccrVQryKaQcNCNXn9oqlho1a9bpkbNORzbDjzxvWjxBHxEN3BIqLNP8nCzy1avOcQCuyQZDZD';
-const PHONE_NUMBER_ID = '222295047641979';
-
-// Create transport_details table
+// Create new table for transport details
 const createTransportTable = `
   CREATE TABLE IF NOT EXISTS transport_details (
     id SERIAL PRIMARY KEY,
@@ -29,79 +23,11 @@ const createTransportTable = `
 // Execute table creation
 pool.query(createTransportTable).catch(err => console.error('Error creating transport table:', err));
 
-// Send WhatsApp status update notification
-async function sendStatusUpdate(mobileNumber, status, transportDetails = null) {
-  // Format mobile number: remove non-digits and ensure it starts with country code
-  let recipientNumber = mobileNumber;
-  if (!recipientNumber) {
-    throw new Error('Mobile number is missing');
-  }
-  // Remove non-digit characters (spaces, dashes, etc.)
-  recipientNumber = recipientNumber.replace(/\D/g, '');
-  // Ensure it starts with country code (e.g., +91 for India)
-  if (!recipientNumber.startsWith('+')) {
-    if (recipientNumber.length === 10) {
-      recipientNumber = `+91${recipientNumber}`; // Assume Indian number
-    } else if (recipientNumber.length === 12 && recipientNumber.startsWith('91')) {
-      recipientNumber = `+${recipientNumber}`;
-    } else {
-      throw new Error('Invalid mobile number format');
-    }
-  }
-
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: recipientNumber,
-    type: 'template',
-    template: {
-      name: 'hello_world', // Replace with your actual template name
-      language: { code: 'en_US' },
-      components: [
-        {
-          type: 'body',
-          parameters: [
-            { type: 'text', text: status }, // {{1}}
-            ...(status === 'dispatched' && transportDetails
-              ? [
-                  { type: 'text', text: transportDetails.transport_name || 'N/A' }, // {{2}}
-                  { type: 'text', text: transportDetails.lr_number || 'N/A' }, // {{3}}
-                  { type: 'text', text: transportDetails.transport_contact || 'N/A' } // {{4}}
-                ]
-              : [
-                  { type: 'text', text: 'N/A' }, // {{2}}
-                  { type: 'text', text: 'N/A' }, // {{3}}
-                  { type: 'text', text: 'N/A' } // {{4}}
-                ])
-          ]
-        }
-      ]
-    }
-  };
-
-  try {
-    const res = await axios.post(
-      `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    console.log(`✅ Status update sent to ${recipientNumber} for status: ${status}`);
-    console.log(JSON.stringify(res.data, null, 2));
-  } catch (err) {
-    console.error('Error sending WhatsApp status update:', err.response ? JSON.stringify(err.response.data, null, 2) : err.message);
-    throw err;
-  }
-}
-
 exports.getAllBookings = async (req, res) => {
   try {
     const { status, customerType } = req.query;
     let query = `
-      SELECT id, order_id, customer_name, district, state, status, customer_type, total
+      SELECT id, order_id, customer_name, district, state, status, customer_type ,total
       FROM public.bookings
     `;
     const conditions = [];
@@ -129,6 +55,8 @@ exports.getAllBookings = async (req, res) => {
   }
 };
 
+
+
 exports.updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -137,15 +65,14 @@ exports.updateBookingStatus = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
-
+    
     await pool.query('BEGIN');
-
-    // Update booking status and fetch mobile_number
+    
     const query = `
       UPDATE public.bookings
       SET status = $1
       WHERE id = $2
-      RETURNING id, order_id, status, mobile_number
+      RETURNING id, order_id, status
     `;
     const result = await pool.query(query, [status, id]);
 
@@ -154,31 +81,26 @@ exports.updateBookingStatus = async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    let transportData = null;
     if (status === 'dispatched' && transportDetails) {
       const transportQuery = `
         INSERT INTO transport_details (order_id, transport_name, lr_number, transport_contact)
         VALUES ($1, $2, $3, $4)
-        RETURNING transport_name, lr_number, transport_contact
+        RETURNING *
       `;
-      const transportResult = await pool.query(transportQuery, [
+      await pool.query(transportQuery, [
         result.rows[0].order_id,
         transportDetails.transportName,
         transportDetails.lrNumber,
         transportDetails.transportContact || null
       ]);
-      transportData = transportResult.rows[0];
     }
-
-    // Send WhatsApp notification
-    await sendStatusUpdate(result.rows[0].mobile_number, status, transportData);
 
     await pool.query('COMMIT');
     res.status(200).json({ message: 'Status updated successfully', data: result.rows[0] });
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Error updating booking status:', err);
-    res.status(500).json({ message: 'Failed to update booking status', error: err.message });
+    res.status(500).json({ message: 'Failed to update booking status' });
   }
 };
 
@@ -187,7 +109,7 @@ exports.getFilteredBookings = async (req, res) => {
     const { status } = req.query;
     const allowedStatuses = ['paid', 'packed', 'dispatched', 'delivered'];
     let query = `
-      SELECT b.id, b.order_id, b.customer_name, b.district, b.state, b.status, b.products, b.address, b.created_at, b.mobile_number, t.transport_name, t.lr_number, t.transport_contact
+      SELECT b.id, b.order_id, b.customer_name, b.district, b.state, b.status, b.products, b.address,b.created_at,b.mobile_number, t.transport_name, t.lr_number, t.transport_contact
       FROM public.bookings b
       LEFT JOIN transport_details t ON b.order_id = t.order_id
       WHERE b.status = ANY($1)
@@ -217,50 +139,45 @@ exports.updateFilterBookingStatus = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status value' });
     }
-
+    
     await pool.query('BEGIN');
-
-    // Update booking status and fetch mobile_number
-    const query = `
+    
+    let query = `
       UPDATE public.bookings
       SET status = $1
-      WHERE id = $2
-      RETURNING id, order_id, status, mobile_number
     `;
-    const result = await pool.query(query, [status, id]);
+    const params = [status, id];
+
+    if (status === 'dispatched' && transportDetails) {
+      query += `,
+        transport_name = $3,
+        lr_number = $4,
+        transport_contact = $5
+      `;
+      params.push(
+        transportDetails.transportName,
+        transportDetails.lrNumber,
+        transportDetails.transportContact || null
+      );
+    }
+
+    query += `
+      WHERE id = $2
+      RETURNING id, order_id, status, transport_name, lr_number, transport_contact
+    `;
+    
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       await pool.query('ROLLBACK');
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    let transportData = null;
-    if (status === 'dispatched' && transportDetails) {
-      const transportQuery = `
-        INSERT INTO transport_details (order_id, transport_name, lr_number, transport_contact)
-        VALUES ($1, $2, $3, $4)
-        RETURNING transport_name, lr_number, transport_contact
-      `;
-      const transportResult = await pool.query(transportQuery, [
-        result.rows[0].order_id,
-        transportDetails.transportName,
-        transportDetails.lrNumber,
-        transportDetails.transportContact || null
-      ]);
-      transportData = transportResult.rows[0];
-    }
-
-    // Send WhatsApp notification
-    await sendStatusUpdate(result.rows[0].mobile_number, status, transportData);
-
     await pool.query('COMMIT');
     res.status(200).json({ message: 'Status updated successfully', data: result.rows[0] });
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Error updating booking status:', err);
-    res.status(500).json({ message: 'Failed to update booking status', error: err.message });
+    res.status(500).json({ message: 'Failed to update booking status' });
   }
 };
-
-// Log exports to verify
-console.log('Controller exports:', module.exports);
