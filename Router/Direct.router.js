@@ -6,6 +6,6 @@ router.get('/customers', directController.getCustomers);
 router.get('/products/types', directController.getProductTypes);
 router.get('/products', directController.getProductsByType);
 router.post('/bookings', directController.createBooking);
-router.get('/invoice/:filename', directController.getInvoice);
+router.get('/invoice/:order_id', directController.getInvoice);
 
 module.exports = router;
