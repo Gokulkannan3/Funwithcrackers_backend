@@ -131,7 +131,7 @@ exports.getProductTypes = async (req, res) => {
 
 exports.getProductsByType = async (req, res) => {
   try {
-    const productTypesResult = await pool.query('SELECT product Anno 2025-07-03 18:32:14 +0000 UTC product_type FROM public.products');
+    const productTypesResult = await pool.query('SELECT product_type FROM public.products');
     const productTypes = productTypesResult.rows.map(row => row.product_type);
     let allProducts = [];
     for (const productType of productTypes) {
@@ -269,7 +269,7 @@ exports.createBooking = async (req, res) => {
 exports.getInvoice = async (req, res) => {
   try {
     let { order_id } = req.params;
-    console.log('Received order_id:', order_id); // Debug log
+    console.log('Received order_id: ', order_id); // Debug log
 
     // Strip .pdf extension if present
     if (order_id.endsWith('.pdf')) {
@@ -283,13 +283,33 @@ exports.getInvoice = async (req, res) => {
       return res.status(400).json({ message: 'Invalid order_id format' });
     }
 
-    const bookingQuery = await pool.query(
+    // Try direct lookup by order_id
+    let bookingQuery = await pool.query(
       'SELECT products, total, customer_name, address, mobile_number, email, district, state, customer_type, pdf FROM public.bookings WHERE order_id = $1',
       [order_id]
     );
+
+    // Fallback: try to extract customer_name and order_id if direct lookup fails
     if (bookingQuery.rows.length === 0) {
-      console.log('Booking not found for order_id:', order_id); // Debug log
-      return res.status(404).json({ message: 'Invoice not found' });
+      console.log('Direct lookup failed for order_id:', order_id);
+      // Assume format is customer_name-order_id
+      const parts = order_id.split('-');
+      if (parts.length > 1) {
+        const possibleOrderId = parts.slice(1).join('-'); // Everything after first '-'
+        console.log('Trying fallback with order_id:', possibleOrderId);
+        bookingQuery = await pool.query(
+          'SELECT products, total, customer_name, address, mobile_number, email, district, state, customer_type, pdf FROM public.bookings WHERE order_id = $1',
+          [possibleOrderId]
+        );
+      }
+    }
+
+    if (bookingQuery.rows.length === 0) {
+      console.log('Booking not found for order_id:', order_id);
+      return res.status(404).json({ 
+        message: 'Invoice not found', 
+        details: `No booking found for order_id '${order_id}'. Please use the order_id from the booking response (e.g., 'ORD-1751548161837').`
+      });
     }
 
     const { products, total, customer_name, address, mobile_number, email, district, state, customer_type, pdf } = bookingQuery.rows[0];
@@ -299,12 +319,12 @@ exports.getInvoice = async (req, res) => {
     if (!fs.existsSync(pdf)) {
       console.log('PDF not found, regenerating...');
       const regeneratedPdfPath = await generateInvoicePDF(
-        { order_id, customer_type, total },
+        { order_id: bookingQuery.rows[0].order_id, customer_type, total },
         { customer_name, address, mobile_number, email, district, state },
         JSON.parse(products)
       );
       // Update the pdf column with the regenerated path
-      await pool.query('UPDATE public.bookings SET pdf = $1 WHERE order_id = $2', [regeneratedPdfPath, order_id]);
+      await pool.query('UPDATE public.bookings SET pdf = $1 WHERE order_id = $2', [regeneratedPdfPath, bookingQuery.rows[0].order_id]);
       console.log('Regenerated PDF Path:', regeneratedPdfPath); // Debug log
     }
 
@@ -314,7 +334,7 @@ exports.getInvoice = async (req, res) => {
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=${safeCustomerName}-${order_id}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=${safeCustomerName}-${bookingQuery.rows[0].order_id}.pdf`);
     fs.createReadStream(pdf).pipe(res);
   } catch (err) {
     console.error('Error fetching invoice:', err);
