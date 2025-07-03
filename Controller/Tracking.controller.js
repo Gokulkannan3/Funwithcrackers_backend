@@ -54,7 +54,7 @@ async function sendStatusUpdate(mobileNumber, status, transportDetails = null) {
     to: recipientNumber,
     type: 'template',
     template: {
-      name: 'order_status_update', // Replace with your actual template name
+      name: 'hello_world', // Replace with your actual template name
       language: { code: 'en_US' },
       components: [
         {
