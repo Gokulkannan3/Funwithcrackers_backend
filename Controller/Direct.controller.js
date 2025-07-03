@@ -35,7 +35,6 @@ const upload = multer({ storage });
 // WhatsApp configuration
 const ACCESS_TOKEN = 'EAAkAptynZC8UBO0o6AZCRtnVxH7Mg9JTvP2TF1c9h5663ZAi6qk6LbZCpZAueyaiqPbFYPHjzEx3PFsciBQZB9TkYEfaPvbKxCmnRkepKiIMkj0LzYueQVoYkTYnIc38xV31yIXqfB1xk4Cuaa6yHZCr4ZCeu2pQNiBxlz6siccrVQryKaQcNCNXn9oqlho1a9bpkbNORzbDjzxvWjxBHxEN3BIqLNP8nCzy1avOcQCuyQZDZD';
 const PHONE_NUMBER_ID = '222295047641979';
-const RECIPIENT_NUMBER = '919941269128';
 
 // Generate PDF invoice
 const generateInvoicePDF = (bookingData, customerDetails, products) => {
@@ -135,9 +134,28 @@ async function uploadPDF(pdfPath) {
 
 // Send template with document via WhatsApp
 async function sendTemplateWithPDF(mediaId, total, customerDetails) {
+  // Format mobile number: remove non-digits and ensure it starts with country code
+  let recipientNumber = customerDetails.mobile_number;
+  if (!recipientNumber) {
+    throw new Error('Mobile number is missing in customer details');
+  }
+  // Remove any non-digit characters (spaces, dashes, etc.)
+  recipientNumber = recipientNumber.replace(/\D/g, '');
+  // Ensure it starts with country code (e.g., +91 for India)
+  if (!recipientNumber.startsWith('+')) {
+    // Assuming Indian number if no country code is provided
+    if (recipientNumber.length === 10) {
+      recipientNumber = `+91${recipientNumber}`;
+    } else if (recipientNumber.length === 12 && recipientNumber.startsWith('91')) {
+      recipientNumber = `+${recipientNumber}`;
+    } else {
+      throw new Error('Invalid mobile number format');
+    }
+  }
+
   const payload = {
     messaging_product: 'whatsapp',
-    to: RECIPIENT_NUMBER,
+    to: recipientNumber,
     type: 'template',
     template: {
       name: 'purchase_receipt_1',
@@ -178,7 +196,7 @@ async function sendTemplateWithPDF(mediaId, total, customerDetails) {
     }
   );
 
-  console.log('✅ Template with PDF sent!');
+  console.log('✅ Template with PDF sent to:', recipientNumber);
   console.log(JSON.stringify(res.data, null, 2));
 }
 
