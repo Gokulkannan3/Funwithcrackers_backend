@@ -131,7 +131,7 @@ exports.getProductTypes = async (req, res) => {
 
 exports.getProductsByType = async (req, res) => {
   try {
-    const productTypesResult = await pool.query('SELECT product_type FROM public.products');
+    const productTypesResult = await pool.query('SELECT product Anno 2025-07-03 18:32:14 +0000 UTC product_type FROM public.products');
     const productTypes = productTypesResult.rows.map(row => row.product_type);
     let allProducts = [];
     for (const productType of productTypes) {
@@ -165,7 +165,12 @@ exports.getProductsByType = async (req, res) => {
 exports.createBooking = async (req, res) => {
   try {
     const { customer_id, order_id, products, total, customer_type, customer_name, address, mobile_number, email, district, state } = req.body;
+    console.log('Creating booking with order_id:', order_id); // Debug log
     if (!order_id) return res.status(400).json({ message: 'Order ID is required' });
+    if (!/^[a-zA-Z0-9-_]+$/.test(order_id)) {
+      console.log('Invalid order_id format:', order_id);
+      return res.status(400).json({ message: 'Invalid order_id format' });
+    }
     if (!products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ message: 'Products array is required and must not be empty' });
     }
@@ -180,6 +185,7 @@ exports.createBooking = async (req, res) => {
         [customer_id]
       );
       if (customerCheck.rows.length === 0) {
+        console.log('Customer not found for customer_id:', customer_id);
         return res.status(404).json({ message: 'Customer not found' });
       }
       const { customer_name: db_name, address: db_address, mobile_number: db_mobile, email: db_email, district: db_district, state: db_state, customer_type: dbCustomerType } = customerCheck.rows[0];
@@ -200,6 +206,7 @@ exports.createBooking = async (req, res) => {
     for (const product of products) {
       const { id, product_type, quantity } = product;
       if (!id || !product_type || !quantity || quantity < 1) {
+        console.log('Invalid product data:', { id, product_type, quantity });
         return res.status(400).json({ message: 'Each product must have a valid ID, product type, and positive quantity' });
       }
       const tableName = product_type.toLowerCase().replace(/\s+/g, '_');
@@ -208,6 +215,7 @@ exports.createBooking = async (req, res) => {
         [id]
       );
       if (productCheck.rows.length === 0) {
+        console.log(`Product not found: id=${id}, type=${product_type}`);
         return res.status(404).json({ message: `Product ${id} of type ${product_type} not found or not available` });
       }
     }
@@ -218,12 +226,13 @@ exports.createBooking = async (req, res) => {
       customerDetails,
       products
     );
+    console.log('Booking PDF path:', pdfPath); // Debug log
 
     // Insert booking with PDF path
     const query = `
       INSERT INTO public.bookings (customer_id, order_id, products, total, address, mobile_number, customer_name, email, district, state, customer_type, status, created_at, pdf)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)
-      RETURNING id, created_at, customer_type, pdf
+      RETURNING id, created_at, customer_type, pdf, order_id
     `;
     const values = [
       customer_id || null,
@@ -241,17 +250,19 @@ exports.createBooking = async (req, res) => {
       pdfPath
     ];
     const result = await pool.query(query, values);
+    console.log('Booking inserted:', { id: result.rows[0].id, order_id: result.rows[0].order_id, pdf: result.rows[0].pdf }); // Debug log
 
     res.status(201).json({
       message: 'Booking created successfully',
       id: result.rows[0].id,
       created_at: result.rows[0].created_at,
       customer_type: result.rows[0].customer_type,
-      pdf_path: result.rows[0].pdf
+      pdf_path: result.rows[0].pdf,
+      order_id: result.rows[0].order_id
     });
   } catch (err) {
     console.error('Error creating booking:', err);
-    res.status(500).json({ message: 'Failed to create booking' });
+    res.status(500).json({ message: 'Failed to create booking', error: err.message });
   }
 };
 
@@ -264,6 +275,12 @@ exports.getInvoice = async (req, res) => {
     if (order_id.endsWith('.pdf')) {
       order_id = order_id.replace(/\.pdf$/, '');
       console.log('Stripped order_id:', order_id); // Debug log
+    }
+
+    // Validate order_id format
+    if (!/^[a-zA-Z0-9-_]+$/.test(order_id)) {
+      console.log('Invalid order_id format:', order_id);
+      return res.status(400).json({ message: 'Invalid order_id format' });
     }
 
     const bookingQuery = await pool.query(
@@ -301,6 +318,6 @@ exports.getInvoice = async (req, res) => {
     fs.createReadStream(pdf).pipe(res);
   } catch (err) {
     console.error('Error fetching invoice:', err);
-    res.status(500).json({ message: 'Failed to fetch invoice' });
+    res.status(500).json({ message: 'Failed to fetch invoice', error: err.message });
   }
 };
