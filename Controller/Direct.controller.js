@@ -33,7 +33,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // WhatsApp configuration
-const ACCESS_TOKEN = 'EAAkAptynZC8UBO2qHv5fDJfo3NBocugPb2BqcUEFZAfBtVJ71zvbIDi6vddHRGfqJUMHQBEukpvQHV3eraI9ZBnzUN76vPXngPxvZA6ZCEiMesBoXgrNK6oVyHZAG6ogUy58E1CZAjszoEcPz0Tkqi44spuC1o0ibJhdZCIxaOON8oVk2MC915LZCzZBusYLbEEtZCWLk8Tn5kPwhL67lMmkpQW7hq64xicEqA6HZCWCqLKqLAZDZD';
+const ACCESS_TOKEN = 'EAAkAptynZC8UBO0o6AZCRtnVxH7Mg9JTvP2TF1c9h5663ZAi6qk6LbZCpZAueyaiqPbFYPHjzEx3PFsciBQZB9TkYEfaPvbKxCmnRkepKiIMkj0LzYueQVoYkTYnIc38xV31yIXqfB1xk4Cuaa6yHZCr4ZCeu2pQNiBxlz6siccrVQryKaQcNCNXn9oqlho1a9bpkbNORzbDjzxvWjxBHxEN3BIqLNP8nCzy1avOcQCuyQZDZD';
 const PHONE_NUMBER_ID = '222295047641979';
 const RECIPIENT_NUMBER = '919941269128';
 
