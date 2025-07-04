@@ -33,7 +33,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // WhatsApp configuration
-const ACCESS_TOKEN = 'EAAkAptynZC8UBO0o6AZCRtnVxH7Mg9JTvP2TF1c9h5663ZAi6qk6LbZCpZAueyaiqPbFYPHjzEx3PFsciBQZB9TkYEfaPvbKxCmnRkepKiIMkj0LzYueQVoYkTYnIc38xV31yIXqfB1xk4Cuaa6yHZCr4ZCeu2pQNiBxlz6siccrVQryKaQcNCNXn9oqlho1a9bpkbNORzbDjzxvWjxBHxEN3BIqLNP8nCzy1avOcQCuyQZDZD';
+const ACCESS_TOKEN = 'EAAkAptynZC8UBPBqaui7g6OVQH6TfDuDbxhtIU0qiLM7OG4wvs37VIo48X1e97AZBCvpDPrEy1XBhbWcU8wFF6eC6PwutUk4pP2qoJlritdxkRQtGIGZAKtewtHJXvDwTrAih8p3p7NPuDQuajqI1U7XDtUZBgAK8XvK4nUOiaSPZCOlb5o8SZCUi4zrF92RdDBcaWIdxGzl1tnyTdpCsZAoZB5dkXAeGSC0BRXYsL7K4RkZD';
 const PHONE_NUMBER_ID = '222295047641979';
 
 // Generate PDF invoice
