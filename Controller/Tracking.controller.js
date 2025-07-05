@@ -262,5 +262,4 @@ exports.updateFilterBookingStatus = async (req, res) => {
   }
 };
 
-// Log exports to verify
-console.log('Controller exports:', module.exports);
+module.exports;

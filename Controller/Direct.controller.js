@@ -177,8 +177,9 @@ async function sendTemplateWithPDF(mediaId, total, customerDetails) {
           type: 'body',
           parameters: [
             { type: 'text', text: `Rs.${parseFloat(total).toFixed(2)}` }, // {{1}}
-            { type: 'text', text: `Phoenix Crackers, Anil kumar Eye Hospital Opp, Sattur Road, Sivakasi` }, // {{2}}
+            { type: 'text', text: 'Phoenix Crackers, Anil kumar Eye Hospital Opp, Sattur Road, Sivakasi' }, // {{2}}
             { type: 'text', text: 'receipt' }, // {{3}}
+            { type: 'text', text: 'gokul8506@oksbi' }, // {{4}} UPI ID for payment
           ],
         },
       ],
@@ -196,7 +197,7 @@ async function sendTemplateWithPDF(mediaId, total, customerDetails) {
     }
   );
 
-  console.log('✅ Template with PDF sent to:', recipientNumber);
+  console.log('✅ Template with PDF and UPI ID sent to:', recipientNumber);
   console.log(JSON.stringify(res.data, null, 2));
 }
 
@@ -446,5 +447,4 @@ exports.getInvoice = async (req, res) => {
   }
 };
 
-// Log exports to verify
-console.log('Controller exports:', module.exports);
+module.exports;
