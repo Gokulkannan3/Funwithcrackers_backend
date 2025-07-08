@@ -30,7 +30,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-const ACCESS_TOKEN = 'EAAKZAUdN55kEBPAVZB91fpPglB20VnQPqTvmbEdGPNiiw9LH2r4IxVFEjBTKz7vUiPCDM57P0dOmqSaJ7H3bFr34jWxYxaY9GSubxl3srQZBRcIL8xPKjw3MtUSS3UoPdWH6K4JAMYlF7NhmtzHEDOtoKX9OHrMtQRB3xSXeshDQ7IaeV5UEpzpsvzgVpl0EU8dwS8niR6R514fB01Yr0ZAq1LPjvoEhZCAEpK0kfW1UZD'
+const ACCESS_TOKEN = 'EAAKZAUdN55kEBPCVvsNNZBMg38VsJsBcpEIYNnYqTitiZAUOBu0DHZC326LV4QslYX00y1oOnCMF0V1JzJLeJRIlKBbGpZA994coQ1ALIJq0DC4Xugmo8r0GhRvdsxJgHmduoG4fYcmidjBb55TQR50ncqktQMM7Ked1g4vOa2Dj9d5HGgXFEVMQYZA6ieDkBGPZCLW3lhFSvjDCL1eR9BRvz3UJJkYnggAGuT47ZB2AzRAZD'
 const PHONE_NUMBER_ID = '660922473779560';
 
 const generateInvoicePDF = (bookingData, customerDetails, products) => {
@@ -316,11 +316,15 @@ exports.createBooking = async (req, res) => {
     ];
     const result = await pool.query(query, values);
 
-    const mediaId = await uploadPDF(pdfPath);
-    await sendTemplateWithPDF(mediaId, total, customerDetails);
+    try {
+      const mediaId = await uploadPDF(pdfPath);
+      await sendTemplateWithPDF(mediaId, total, customerDetails);
+    } catch (err) {
+      console.error('WhatsApp PDF sending failed:', err);
+    }
 
     res.status(201).json({
-      message: 'Booking created successfully and PDF sent via WhatsApp',
+      message: 'Booking created successfully',
       id: result.rows[0].id,
       created_at: result.rows[0].created_at,
       customer_type: result.rows[0].customer_type,
@@ -328,7 +332,7 @@ exports.createBooking = async (req, res) => {
       order_id: result.rows[0].order_id
     });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to create booking or send PDF', error: err.response ? JSON.stringify(err.response.data, null, 2) : err.message });
+    res.status(500).json({ message: 'Failed to create booking', error: err.message });
   }
 };
 
