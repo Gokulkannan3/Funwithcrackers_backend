@@ -1,28 +1,7 @@
 const express = require('express');
-const path = require('path');
 const { Pool } = require('pg');
-const multer = require('multer');
-const fs = require('fs');
 
 const app = express();
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const pdfDir = path.join(__dirname, '../Uploads');
-    if (!fs.existsSync(pdfDir)) {
-      fs.mkdirSync(pdfDir, { recursive: true });
-    }
-    cb(null, pdfDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const extension = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${extension}`);
-  },
-});
-const upload = multer({ storage });
-
-app.use('/Uploads', express.static(path.join(__dirname, '../Uploads')));
 
 const pool = new Pool({
   user: process.env.PGUSER,
@@ -34,8 +13,7 @@ const pool = new Pool({
 
 exports.addProduct = async (req, res) => {
   try {
-    const { serial_number, productname, price, per, discount, product_type } = req.body;
-    const image = req.file ? `/Uploads/${req.file.filename}` : null;
+    const { serial_number, productname, price, per, discount, product_type, imageBase64 } = req.body;
 
     if (!serial_number || !productname || !price || !per || !discount || !product_type) {
       return res.status(400).json({ message: 'All required fields must be provided' });
@@ -43,6 +21,10 @@ exports.addProduct = async (req, res) => {
 
     if (!['pieces', 'box', 'pkt'].includes(per)) {
       return res.status(400).json({ message: 'Valid per value (pieces, box, or pkt) is required' });
+    }
+
+    if (imageBase64 && !imageBase64.match(/^data:image\/(png|jpeg|jpg);base64,/)) {
+      return res.status(400).json({ message: 'Invalid Base64 image format. Must be PNG or JPEG.' });
     }
 
     const tableName = product_type.toLowerCase().replace(/\s+/g, '_');
@@ -66,7 +48,7 @@ exports.addProduct = async (req, res) => {
           price NUMERIC(10,2) NOT NULL,
           per VARCHAR(10) NOT NULL CHECK (per IN ('pieces', 'box', 'pkt')),
           discount NUMERIC(5,2) NOT NULL,
-          image VARCHAR(255),
+          image TEXT,
           status VARCHAR(10) NOT NULL DEFAULT 'off' CHECK (status IN ('on', 'off')),
           fast_running BOOLEAN DEFAULT false
         )
@@ -88,13 +70,63 @@ exports.addProduct = async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
     `;
-    const values = [serial_number, productname, parseFloat(price), per, parseFloat(discount), image, 'off'];
+    const values = [serial_number, productname, parseFloat(price), per, parseFloat(discount), imageBase64 || null, 'off'];
 
     const result = await pool.query(query, values);
     res.status(201).json({ message: 'Product saved successfully', id: result.rows[0].id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to save product' });
+  }
+};
+
+exports.updateProduct = async (req, res) => {
+  try {
+    const { tableName, id } = req.params;
+    const { serial_number, productname, price, per, discount, status, imageBase64 } = req.body;
+
+    if (!serial_number || !productname || !price || !per || !discount) {
+      return res.status(400).json({ message: 'All required fields must be provided' });
+    }
+
+    if (!['pieces', 'box', 'pkt'].includes(per)) {
+      return res.status(400).json({ message: 'Valid per value (pieces, box, or pkt) is required' });
+    }
+
+    if (imageBase64 && !imageBase64.match(/^data:image\/(png|jpeg|jpg);base64,/)) {
+      return res.status(400).json({ message: 'Invalid Base64 image format. Must be PNG or JPEG.' });
+    }
+
+    let query = `
+      UPDATE public.${tableName} 
+      SET serial_number = $1, productname = $2, price = $3, per = $4, discount = $5
+    `;
+    const values = [serial_number, productname, parseFloat(price), per, parseFloat(discount)];
+    let paramIndex = 6;
+
+    if (imageBase64 !== undefined) {
+      query += `, image = $${paramIndex}`;
+      values.push(imageBase64 || null);
+      paramIndex++;
+    }
+
+    if (status && ['on', 'off'].includes(status)) {
+      query += `, status = $${paramIndex}`;
+      values.push(status);
+      paramIndex++;
+    }
+
+    query += ` WHERE id = $${paramIndex} RETURNING id`;
+    values.push(id);
+
+    const result = await pool.query(query, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    res.status(200).json({ message: 'Product updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to update product' });
   }
 };
 
@@ -195,7 +227,7 @@ exports.addProductType = async (req, res) => {
         price NUMERIC(10,2) NOT NULL,
         per VARCHAR(10) NOT NULL CHECK (per IN ('pieces', 'box', 'pkt')),
         discount NUMERIC(5,2) NOT NULL,
-        image VARCHAR(255),
+        image TEXT,
         status VARCHAR(10) NOT NULL DEFAULT 'off' CHECK (status IN ('on', 'off')),
         fast_running BOOLEAN DEFAULT false
       )
@@ -215,45 +247,6 @@ exports.getProductTypes = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch product types' });
-  }
-};
-
-exports.updateProduct = async (req, res) => {
-  try {
-    const { tableName, id } = req.params;
-    const { serial_number, productname, price, per, discount, status } = req.body;
-    const image = req.file ? `/Uploads/${req.file.filename}` : null;
-
-    let query = `
-      UPDATE public.${tableName} 
-      SET serial_number = $1, productname = $2, price = $3, per = $4, discount = $5
-    `;
-    const values = [serial_number, productname, parseFloat(price), per, parseFloat(discount)];
-    let paramIndex = 6;
-
-    if (image) {
-      query += `, image = $${paramIndex}`;
-      values.push(image);
-      paramIndex++;
-    }
-
-    if (status && ['on', 'off'].includes(status)) {
-      query += `, status = $${paramIndex}`;
-      values.push(status);
-      paramIndex++;
-    }
-
-    query += ` WHERE id = $${paramIndex} RETURNING id`;
-    values.push(id);
-
-    const result = await pool.query(query, values);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-    res.status(200).json({ message: 'Product updated successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to update product' });
   }
 };
 
