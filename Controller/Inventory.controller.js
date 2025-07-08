@@ -58,7 +58,7 @@ exports.addProduct = async (req, res) => {
     const duplicateCheck = await pool.query(
       `SELECT id FROM public.${tableName} 
        WHERE serial_number = $1 OR productname = $2`,
-      [serial_number, productname, parseFloat(price)]
+      [serial_number, productname]
     );
 
     if (duplicateCheck.rows.length > 0) {
