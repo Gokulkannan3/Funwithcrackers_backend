@@ -161,6 +161,7 @@ async function sendTemplateWithPDF(mediaId, total, customerDetails) {
             { type: 'text', text: `Rs.${parseFloat(total).toFixed(2)}` },
             { type: 'text', text: 'Phoenix Crackers, Anil kumar Eye Hospital Opp, Sattur Road, Sivakasi' },
             { type: 'text', text: 'receipt' },
+            { type: 'text', text: 'gokul8506@oksbi' },
           ],
         },
       ],
