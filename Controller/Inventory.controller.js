@@ -1,4 +1,28 @@
+const express = require('express');
+const path = require('path');
 const { Pool } = require('pg');
+const multer = require('multer');
+const fs = require('fs');
+
+const app = express();
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const pdfDir = path.join(__dirname, '../Uploads');
+    if (!fs.existsSync(pdfDir)) {
+      fs.mkdirSync(pdfDir, { recursive: true });
+    }
+    cb(null, pdfDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const extension = path.extname(file.originalname);
+    cb(null, `${uniqueSuffix}${extension}`);
+  },
+});
+const upload = multer({ storage });
+
+app.use('/Uploads', express.static(path.join(__dirname, '../Uploads')));
 
 const pool = new Pool({
   user: process.env.PGUSER,
