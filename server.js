@@ -51,6 +51,7 @@ app.use('/api/direct', require('./Router/Direct.router'));
 app.use('/api/tracking', require('./Router/Tracking.router'));
 app.use('/api', require('./Router/Banner.router'));
 app.use('/api', require('./Router/Promocode.router'));
+app.use('/api', require('./Router/Dbooking.router'));
 
 // Start server
 const PORT = process.env.PORT || 5000;

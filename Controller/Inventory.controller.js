@@ -1,7 +1,4 @@
-const express = require('express');
 const { Pool } = require('pg');
-
-const app = express();
 
 const pool = new Pool({
   user: process.env.PGUSER,
@@ -160,7 +157,10 @@ exports.toggleFastRunning = async (req, res) => {
 
 exports.getProducts = async (req, res) => {
   try {
-    const typeResult = await pool.query('SELECT product_type FROM public.products');
+    const typeResult = await pool.query(
+      'SELECT product_type FROM public.products WHERE product_type != $1',
+      ['gift_box_dealers']
+    );
     const productTypes = typeResult.rows.map(row => row.product_type);
 
     let allProducts = [];
